@@ -12,21 +12,21 @@ Participant Workflow
     wf = init_single_subject_wf(
         atlas_img='',
         atlas_lut='',
+        bold_metadata_list=[''],
         brainmask_list=[''],
         confound_tsv_list=[''],
         events_tsv_list=[''],
-        high_pass='',
-        hrf_model='',
-        low_pass='',
+        hrf_model='glover',
+        low_pass=None,
         name='subtest',
         output_dir='.',
         preproc_img_list=[''],
         selected_confounds=[''],
-        smoothing_kernel=0.0)
+        smoothing_kernel=None)
 
 The general workflow for a participant models the betaseries for each trial type
 for each bold file associated with the participant.
-Then betas within a region of interest based off a parcellation are averaged together.
+Then betas within a region of interest are based off a parcellation are averaged together.
 This occurs as many times as there are trials for that particular trial type, resulting
 in a psuedo-timeseries (e.g. each point in "time" represents an occurrence of
 that trial).
@@ -43,7 +43,6 @@ BetaSeries Workflow
     wf = init_betaseries_wf(
         hrf_model='glover',
         low_pass=None,
-        high_pass=None,
         smoothing_kernel=0.0,
         selected_confounds=[''])
 

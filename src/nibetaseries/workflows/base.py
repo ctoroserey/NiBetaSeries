@@ -14,11 +14,11 @@ from .analysis import init_correlation_wf
 from ..interfaces.bids import DerivativesDataSink
 from nipype.pipeline import engine as pe
 from nipype.interfaces import utility as niu
-from bids.grabbids import BIDSLayout
+from bids import BIDSLayout
 
 
 def init_nibetaseries_participant_wf(atlas_img, atlas_lut, bids_dir,
-                                     derivatives_pipeline_dir, exclude_variant_label, high_pass, hrf_model, low_pass,
+                                     derivatives_pipeline_dir, exclude_variant_label, hrf_model, low_pass,
                                      output_dir, run_label, selected_confounds, session_label, smoothing_kernel,
                                      space_label, subject_list, task_label, variant_label, work_dir):
     """
@@ -38,8 +38,6 @@ def init_nibetaseries_participant_wf(atlas_img, atlas_lut, bids_dir,
             Root directory of the derivatives pipeline
         exclude_variant_label: str or None
             Exclude bold series containing this variant label
-        high_pass : float or None
-            High pass filter (Hz)
         hrf_model : str
             The model that represents the shape of the hemodynamic response function
         low_pass : float or None
@@ -71,57 +69,39 @@ def init_nibetaseries_participant_wf(atlas_img, atlas_lut, bids_dir,
     os.makedirs(nibetaseries_participant_wf.base_dir, exist_ok=True)
 
     # reading in derivatives and bids inputs as queryable database like objects
-    derivatives_layout = BIDSLayout([(derivatives_pipeline_dir, ['bids', 'derivatives'])])
-    bids_layout = BIDSLayout(bids_dir, exclude=['sourcedata', 'derivatives'])
+    layout = BIDSLayout([(bids_dir, ['bids']),
+                         (derivatives_pipeline_dir, ['bids', 'derivatives'])],
+                        include=['sub-*', 'dataset_description.json', 'task-*'])
 
     for subject_label in subject_list:
 
         # collect the necessary inputs for both collect data
-        subject_derivative_data = collect_data(derivatives_layout,
-                                               subject_label,
-                                               task=task_label,
-                                               run=run_label,
-                                               ses=session_label,
-                                               space=space_label,
-                                               deriv=True)
-
-        subject_bids_data = collect_data(bids_layout,
-                                         subject_label,
-                                         task=task_label,
-                                         run=run_label,
-                                         ses=session_label)
-
-        # if you want to avoid using a particular variant
-        if exclude_variant_label:
-            subject_derivative_data['preproc'] = [
-                preproc for preproc in subject_derivative_data['preproc'] if exclude_variant_label not in preproc
-            ]
-
-        # if you only want to use a particular variant
-        if variant_label:
-            subject_derivative_data['preproc'] = [
-                preproc for preproc in subject_derivative_data['preproc'] if variant_label in preproc
-            ]
-
-        length = len(subject_derivative_data['preproc'])
-
-        if any(len(lst) != length for lst in [subject_derivative_data['brainmask'],
-                                              subject_derivative_data['confounds'],
-                                              subject_bids_data['events']]):
-            raise ValueError('input lists are not the same length!')
+        subject_data = collect_data(layout,
+                                    subject_label,
+                                    task=task_label,
+                                    run=run_label,
+                                    ses=session_label,
+                                    space=space_label,
+                                    variant=variant_label)
+        # collect files to be associated with each preproc
+        brainmask_list = [d['brainmask'] for d in subject_data]
+        confound_tsv_list = [d['confounds'] for d in subject_data]
+        events_tsv_list = [d['events'] for d in subject_data]
+        preproc_img_list = [d['preproc'] for d in subject_data]
+        bold_metadata_list = [d['metadata'] for d in subject_data]
 
         single_subject_wf = init_single_subject_wf(
             atlas_img=atlas_img,
             atlas_lut=atlas_lut,
-            brainmask_list=subject_derivative_data['brainmask'],
-            confound_tsv_list=subject_derivative_data['confounds'],
-            events_tsv_list=subject_bids_data['events'],
-            high_pass=high_pass,
+            bold_metadata_list=bold_metadata_list,
+            brainmask_list=brainmask_list,
+            confound_tsv_list=confound_tsv_list,
+            events_tsv_list=events_tsv_list,
             hrf_model=hrf_model,
             low_pass=low_pass,
             name='single_subject' + subject_label + '_wf',
             output_dir=output_dir,
-            preproc_img_list=subject_derivative_data['preproc'],
+            preproc_img_list=preproc_img_list,
             selected_confounds=selected_confounds,
             smoothing_kernel=smoothing_kernel,
         )
@@ -138,9 +118,9 @@ def init_nibetaseries_participant_wf(atlas_img, atlas_lut, bids_dir,
     return nibetaseries_participant_wf
 
 
-def init_single_subject_wf(atlas_img, atlas_lut, brainmask_list, confound_tsv_list, events_tsv_list, high_pass,
-                           hrf_model, low_pass, name, output_dir, preproc_img_list, selected_confounds,
-                           smoothing_kernel):
+def init_single_subject_wf(atlas_img, atlas_lut, bold_metadata_list, brainmask_list, confound_tsv_list,
+                           events_tsv_list, hrf_model, low_pass, name, output_dir, preproc_img_list,
+                           selected_confounds, smoothing_kernel):
     """
     This workflow completes the generation of the betaseries files and the calculation of the correlation matrices.
     .. workflow::
@@ -151,10 +131,10 @@ def init_single_subject_wf(atlas_img, atlas_lut, brainmask_list, confound_tsv_li
         wf = init_single_subject_wf(
             atlas_img='',
             atlas_lut='',
+            bold_metadata_list=[''],
             brainmask_list=[''],
             confound_tsv_list=[''],
             events_tsv_list=[''],
-            high_pass='',
             hrf_model='',
             low_pass='',
             name='subtest',
@@ -170,14 +150,14 @@ def init_single_subject_wf(atlas_img, atlas_lut, brainmask_list, confound_tsv_li
             path to input atlas nifti
         atlas_lut : str
             path to input atlas lookup table (tsv)
+        bold_metadata_list : list
+            list of bold metadata associated with each preprocessed file
         brainmask_list : list
             list of brain masks in MNI space
         confound_tsv_list : list
             list of confound tsvs (e.g. from FMRIPREP)
         events_tsv_list : list
             list of event tsvs
-        high_pass : float or None
-            high pass filter to apply to bold (in Hertz). Reminder - frequencies _higher_ than this number are kept.
         hrf_model : str
             hemodynamic response function used to model the data
         low_pass : float or None
@@ -200,6 +180,8 @@ def init_single_subject_wf(atlas_img, atlas_lut, brainmask_list, confound_tsv_li
             path to input atlas nifti
         atlas_lut
             path to input atlas lookup table (tsv)
+        bold_metadata
+            bold metadata associated with the preprocessed file
         brainmask
             binary mask in MNI space for the participant
         confound_tsv
@@ -220,6 +202,7 @@ def init_single_subject_wf(atlas_img, atlas_lut, brainmask_list, confound_tsv_li
     # name the nodes
     input_node = pe.Node(niu.IdentityInterface(fields=['atlas_img',
                                                        'atlas_lut',
+                                                       'bold_metadata',
                                                        'brainmask',
                                                        'confound_tsv',
                                                        'events_tsv',
@@ -229,7 +212,8 @@ def init_single_subject_wf(atlas_img, atlas_lut, brainmask_list, confound_tsv_li
                          iterables=[('brainmask', brainmask_list),
                                     ('confound_tsv', confound_tsv_list),
                                     ('events_tsv', events_tsv_list),
-                                    ('preproc_img', preproc_img_list)],
+                                    ('preproc_img', preproc_img_list),
+                                    ('bold_metadata', bold_metadata_list)],
                          synchronize=True)
 
     input_node.inputs.atlas_img = atlas_img
@@ -239,7 +223,7 @@ def init_single_subject_wf(atlas_img, atlas_lut, brainmask_list, confound_tsv_li
                           name='output_node')
 
     # initialize the betaseries workflow
-    betaseries_wf = init_betaseries_wf(hrf_model=hrf_model, low_pass=low_pass, high_pass=high_pass,
+    betaseries_wf = init_betaseries_wf(hrf_model=hrf_model, low_pass=low_pass,
                                        selected_confounds=selected_confounds, smoothing_kernel=smoothing_kernel)
 
     # initialize the analysis workflow
@@ -257,7 +241,8 @@ def init_single_subject_wf(atlas_img, atlas_lut, brainmask_list, confound_tsv_li
             [('preproc_img', 'input_node.bold_file'),
              ('events_tsv', 'input_node.events_file'),
              ('brainmask', 'input_node.bold_mask_file'),
-             ('confound_tsv', 'input_node.confounds_file')]),
+             ('confound_tsv', 'input_node.confounds_file'),
+             ('bold_metadata', 'input_node.bold_metadata')]),
         (betaseries_wf, correlation_wf,
             [('output_node.betaseries_files', 'input_node.betaseries_files')]),
         (input_node, correlation_wf, [('atlas_img', 'input_node.atlas_file'),

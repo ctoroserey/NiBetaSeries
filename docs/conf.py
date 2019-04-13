@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 import os
 
+import nibetaseries
 
 extensions = [
     'sphinx.ext.autodoc',
@@ -14,6 +15,7 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
     'nipype.sphinxext.plot_workflow',
+    'sphinx_gallery.gen_gallery',
     'sphinxarg.ext',
     'sphinx.ext.mathjax',
 ]
@@ -22,13 +24,20 @@ if os.getenv('SPELLCHECK'):
     spelling_show_suggestions = True
     spelling_lang = 'en_US'
 
+sphinx_gallery_conf = {
+     # path to your examples scripts
+     'examples_dirs': '../examples',
+     # path where to save gallery generated examples
+     'gallery_dirs': 'auto_examples',
+}
+
 source_suffix = '.rst'
 master_doc = 'index'
 project = 'NiBetaSeries'
 year = '2018'
 author = 'James Kent'
 copyright = '{0}, {1}'.format(year, author)
-version = release = '0.1.0'
+version = release = nibetaseries.__version__
 
 pygments_style = 'trac'
 templates_path = ['.']
@@ -36,16 +45,8 @@ extlinks = {
     'issue': ('https://github.com/HBClab/NiBetaSeries/issues/%s', '#'),
     'pr': ('https://github.com/HBClab/NiBetaSeries/pull/%s', 'PR #'),
 }
-# import sphinx_py3doc_enhanced_theme
 html_theme = "sphinx_rtd_theme"
-# html_theme_path = [sphinx_py3doc_enhanced_theme.get_html_theme_path()]
-html_theme_options = {
-    'githuburl': 'https://github.com/HBClab/NiBetaSeries/'
-}
 
-html_use_smartypants = True
-html_last_updated_fmt = '%b %d, %Y'
-html_split_index = False
 html_sidebars = {
    '**': ['searchbox.html', 'globaltoc.html', 'sourcelink.html'],
 }
